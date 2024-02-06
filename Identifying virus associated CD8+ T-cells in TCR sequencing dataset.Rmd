@@ -1,0 +1,39 @@
+---
+title: "Identifying virus associated CD8+ T-cells in TCR sequencing dataset" 
+author: "MJ"
+date: "2023-12-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+#install packages 
+install.packages("readxl")
+library(readxl)
+install.packages("writexl")
+library(writexl)
+install.packages("tidyverse")
+library(tidyverse)
+```
+
+```{r}
+## Matching TCRb sequencing data with virus associated CDR3 sequences. 
+
+#combined mcPAS + VDJdb + TBAdb databases
+# ADD LINK TO REPOSITORY
+DB = read_excel("J:/Workgroups/FWN/LACDR/BIOPHARMACEUTICS/Maaike/MJ17 TCR sequencing data/2022_04_23_combineddb_McPAS+VDJdb+TBAdb_virus specific only.xlsx")
+#TCR sequencing dataset
+TCRseq = read_excel("INSERT")
+
+#combine datasets
+TCRmatches1 = left_join(TCRseq, DB, by = "CDR3")
+#or, filterout all virus associated TCRs
+TCRmatches2 = inner_join(TCRseq, DB, by = "CDR3")
+
+#removing duplicate TCRb sequences per patient
+matches.P88 = TCRmatches1%>%filter(`Patient`==88)
+matches.P88_2 = matches.P88 %>% arrange(cdr3) %>% filter(duplicated(cdr3) == FALSE)
+
+```
+
+
+

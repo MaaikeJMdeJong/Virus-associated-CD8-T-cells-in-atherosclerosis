@@ -1,0 +1,143 @@
+---
+title: "Identifying virus associated CD8+ T-cells in single cell TCR seq dataset" 
+author: "MJ"
+date: "2023-12-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+##install packages 
+
+#install.packages("readxl")
+library(readxl)
+#install.packages("writexl")
+library(writexl)
+#install.packages("tidyverse")
+library(tidyverse)
+#install.packages("readxl")
+library(readxl)
+#install.packages("writexl")
+library(writexl)
+#install.packages("tidyverse")
+library(tidyverse)
+#install.packages("Seurat")
+library(Seurat)
+library(dplyr)
+
+#if (!requireNamespace('BiocManager', quietly = TRUE))
+#install.packages('BiocManager')
+#BiocManager::install('EnhancedVolcano')
+library(EnhancedVolcano)
+```
+
+```{r}
+## Databases
+
+#combined mcPAS + VDJdb + TBAdb databases
+# ADD LINK TO REPOSITORY
+knownCDR3TCRb <- read_xlsx("J:/Workgroups/FWN/LACDR/BIOPHARMACEUTICS/Maaike/MJ17 TCR sequencing data/2022_04_23_combineddb_McPAS+VDJdb+TBAdb_virus specific only.xlsx") 
+knownCDR3TCRa <- read_xlsx("J:/Workgroups/FWN/LACDR/BIOPHARMACEUTICS/Maaike/MJ17 TCR sequencing data/VDJdb_TCRa_CDR3.xlsx") 
+#TCR sequencing dataset
+Object <- readRDS("INSERT")
+```
+
+
+```{r}
+## Matching TCRb sequencing data with virus associated CDR3 sequences. 
+
+#Splitting CDR3 TCRa/b sequence
+as.character(Object1@meta.data$CTaa)
+Table <- str_split(Object1@meta.data$CTaa, "_")
+Table <- as.data.frame(Table)
+Table <- t(Table)
+colnames(Table) <- c("TCRa","TCRb")
+Table <- as.data.frame(Table)
+
+Object1@meta.data["TCRa"] <- Table$TCRa
+Object1@meta.data["TCRb"] <- Table$TCRb
+
+#Adding virus specific column TCRa
+df <- list()
+n <- nrow(Object1@meta.data)
+CDR3 <- knownCDR3TCRa$CDR3
+for (i in 1:n){matching = any(match(Object1$TCRa[i], CDR3))
+  df[[i]] <- matching}
+df <- as.data.frame(df)
+df <- t(df)
+df <- as.data.frame(df)
+colnames(df) <- "virus specific TCRa"
+
+Object1@meta.data["virus specific TCRa"] <- df$`virus specific TCRa`
+
+#Adding virus specific column TCRb
+df1 <- list()
+n <- nrow(Object1@meta.data)
+CDR3 <- knownCDR3$CDR3
+for (i in 1:n){matching = any(match(Object1$TCRb[i], CDR3))
+  df1[[i]] <- matching}
+df1 <- as.data.frame(df1)
+df1 <- t(df1)
+df1 <- as.data.frame(df1)
+colnames(df1) <- "virus specific TCRb"
+
+Object1@meta.data["virus specific TCRb"] <- df1$`virus specific TCRb`
+
+#changing NA output into FALSE
+Object1$`virus specific TCRb`[is.na(Object1$`virus specific TCRb`)] <- FALSE
+Object1$`virus specific TCRa`[is.na(Object1$`virus specific TCRa`)] <- FALSE
+
+#if cells have a virus specific TCRa or TCRb -> TRUE
+Object1@meta.data["virus specific TCRa+b"] <- sapply(1:5730, function(i) (Object1$`virus.specific.TCRb`[i] == TRUE) || 
+     (Object1$`virus.specific.TCRa`[i] == TRUE))
+
+#changing logical data to numeric data to catagorical data
+Object1@meta.data["TCRab_numeric"] <- (Object1$`virus specific TCRa+b`*1)
+Object1$TCRab_numeric[Object1$TCRab_numeric==1]<-"Virus_specific" 
+Object1$TCRab_numeric[Object1$TCRab_numeric==0]<-"not Virus_specific"
+
+#changing logical data to numeric data to catagorical data = VIRUS SPECIFIC TCRB
+Object1@meta.data["TCRb_numeric"] <- (Object1$`virus.specific.TCRb`*1)
+Object1$TCRb_numeric[Object1$TCRb_numeric==1]<-"Virus_specific"
+Object1$TCRb_numeric[Object1$TCRb_numeric==0]<-"not Virus_specific" 
+
+```
+
+```{r}
+##Determine differentially expressed gene expression between virus associated and not-associated
+
+Idents(Object) <- Object$TCRab_numeric
+Idents(Object)
+
+DefaultAssay(Object) <- "RNA"
+
+#vulcano plot
+DEG.expansion <- FindMarkers(Object, ident.1 = "Virus_specific", ident.2 = "not Virus_specific")
+EnhancedVolcano(DEG.expansion,
+                lab = rownames(DEG.expansion),
+                x = 'avg_log2FC',
+                y = 'p_val',
+                title = "CD8 Virus specific vs aspecific",
+                pCutoff = 10e-6,
+                FCcutoff = 0.5,
+                pointSize = 1.5,
+                axisLabSize = 15,
+                labSize = 4,
+                labFace = "bold", 
+                shape = 1,
+                gridlines.major = F,
+                gridlines.minor = F)
+```
+
+
+```{r}
+## Highlighting virus associated CD8+ T-cells
+Idents(Object) <- Object$`TCRab_numeric`
+VirusCD8 <- WhichCells(Object, idents = "Virus_specific")
+
+Idents(Object) <- Object$seurat_clusters
+DimPlot(Object, cells.highlight = VirusCD8) + 
+    scale_color_manual(labels = c("CD8", "Virus associated CD8"), values = c("grey", "red")) +
+    labs(color = "Legend") #adding a legend with correct description to the plot
+
+```
+

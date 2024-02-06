@@ -1,0 +1,113 @@
+---
+title: "Virus derived antigen presentation in human atherosclerotic lesions" 
+author: "MJ"
+date: "2023-12-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+##install packages 
+
+#install.packages("readxl")
+library(readxl)
+#install.packages("writexl")
+library(writexl)
+#install.packages("tidyverse")
+library(tidyverse)
+#install.packages("parallel")
+library(parallel)
+#install.packages("MASS")
+library(MASS)
+library(dplyr)
+
+```
+
+```{r}
+
+# Identifying HLA-I peptides that have one mismatch with virus derived peptides
+numCores <- detectCores()
+
+
+search_function <- function(X) {
+matching <- agrep(X, Proteins, max = 1, ignore.case = TRUE, value = TRUE,  useBytes = TRUE, fixed = TRUE)
+return(matching)
+}
+
+#reference protein list
+Proteins <- readRDS("J:/Workgroups/FWN/LACDR/BIOPHARMACEUTICS/Maaike/MJ30 - immunopeptidomics/pathogen reference proteomes.rds")
+#list of peptides to be matched with reference list
+Peptides <- readRDS("J:/Workgroups/FWN/LACDR/BIOPHARMACEUTICS/Maaike/MJ30 - immunopeptidomics/MHCI peptide list.rds")
+
+#create a list of only the protein sequences
+Proteins <- Proteins$Sequence
+
+# Normally Rstudio uses one core of the processor for calculations. Some calculations can be done in parallel with multiple cores using the parallel and MASS packages.
+
+# First step is detecting the different cores/threads the machine has.
+cl <- makeCluster(detectCores())
+# Then the different variables have to be exported to all the clusters/threads/cores so that all the cores have the information needed to carry out their tasks.
+clusterExport(cl=cl, varlist= "Proteins", envir=environment())
+# Then with the parLapply function, similar to the lapply function (only with the clusters as first argument in the function), calculations can be carried out in parallel on all the cores on the computer.
+matching <- parLapply(cl, X = Peptides$c, fun = search_function)
+# After the tasks have been completed the cores have to be shut down again.
+stopCluster(cl)
+
+saveRDS(matching, file = "J:/Workgroups/FWN/LACDR/BIOPHARMACEUTICS/Maaike/MJ30 - immunopeptidomics/MatchList_2mismatches.rds")
+```
+
+```{r}
+# Create a list without peptides lacking matches.
+
+match_count <- list()
+for (i in 1: length(list_original)) {
+  match_count[[i]] <- length(list_original[[i]])
+}
+peptides_with_a_match <- which(match_count != 0)
+
+matched_proteins <- list_original[peptides_with_a_match]
+matched_peptides <- MHC_I_peptide_list[peptides_with_a_match,]
+
+# Filter out entries with a peptide length that is shorter than 6
+
+matched_peptides_length <- matched_peptides[which(nchar(matched_peptides) > 5)]
+matched_proteins_length <- matched_proteins[which(nchar(matched_peptides) > 5)]
+
+# Copy the peptide and proteins to unnessted lists, with multiple entries for peptides with multiple hits.
+peptide_list <- list()
+protein_list <- list()
+
+for (i in 1:length(matched_peptides_length)) {
+  for(h in 1:length(matched_proteins_length[[i]])){
+    peptide_list <- append(peptide_list, matched_peptides_length[[i]])
+    protein_list <- append(protein_list, matched_proteins_length[[i]][[h]])
+  }
+}
+print("done")
+```
+
+```{r}
+# Linking mismatch peptides to viral proteins
+Pathogen_list <- readRDS("J:/Workgroups/FWN/LACDR/BIOPHARMACEUTICS/Maaike/MJ30 - immunopeptidomics/pathogen reference proteomes.rds")
+
+Pathogen <- list()
+uniprot <- list()
+Entry <- list()
+Protein_name <- list()
+
+for (i in 1:length(Peptide_Protein_tibble$Protein)) {
+entry_line <- which(Peptide_Protein_tibble$Protein[[i]] == Pathogen_list$Sequence)
+Pathogen[[i]] <- Pathogen_list$pathogen[entry_line]
+uniprot[[i]] <- Pathogen_list$`uniprot ID`[entry_line]
+Entry[[i]] <- Pathogen_list$Entry[entry_line]
+Protein_name[[i]] <- Pathogen_list$`Protein names`[entry_line]
+}
+
+
+Peptide_Protein_tibble$Pathogen <- Pathogen
+Peptide_Protein_tibble$Uniprot <- uniprot
+Peptide_Protein_tibble$Entry <- Entry
+Peptide_Protein_tibble$Protein_name <- Protein_name
+```
+
+
+
